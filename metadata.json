@@ -1,0 +1,5 @@
+{
+  "name": "Jam'iya Manager",
+  "description": "A comprehensive ROSCA (Rotating Savings and Credit Association) management tool. Tracks monthly contributions, member payouts, and financial status with persistent storage.",
+  "requestFramePermissions": []
+}
