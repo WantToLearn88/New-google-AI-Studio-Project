@@ -215,15 +215,26 @@ public class DashboardActivity extends AppCompatActivity {
     }
 
     private void showAddMemberDialog() {
-        final EditText input = new EditText(this);
-        input.setHint("اسم العضو الجديد");
-        input.setPadding(32, 32, 32, 32);
+        android.widget.FrameLayout container = new android.widget.FrameLayout(this);
+        android.widget.FrameLayout.LayoutParams params = new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        
+        com.google.android.material.textfield.TextInputLayout textInputLayout = new com.google.android.material.textfield.TextInputLayout(this);
+        textInputLayout.setHint("اسم العضو الجديد");
+        textInputLayout.setBoxBackgroundMode(com.google.android.material.textfield.TextInputLayout.BOX_BACKGROUND_OUTLINE);
+        textInputLayout.setLayoutParams(params);
+        
+        com.google.android.material.textfield.TextInputEditText input = new com.google.android.material.textfield.TextInputEditText(textInputLayout.getContext());
+        textInputLayout.addView(input);
+        
+        container.addView(textInputLayout);
+        container.setPadding(60, 40, 60, 20);
 
-        new AlertDialog.Builder(this)
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
             .setTitle("إضافة عضو جديد")
-            .setView(input)
+            .setView(container)
             .setPositiveButton("إضافة", (dialog, which) -> {
-                String newName = input.getText().toString().trim();
+                String newName = input.getText() != null ? input.getText().toString().trim() : "";
                 if (!newName.isEmpty()) {
                     // Calculate next order
                     int nextOrder = 0;
@@ -241,7 +252,7 @@ public class DashboardActivity extends AppCompatActivity {
 
     private void showEditDeleteDialog(Member m) {
         String[] options = {"تعديل الاسم", "حذف العضو"};
-        new AlertDialog.Builder(this)
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
             .setTitle(m.getName())
             .setItems(options, (dialog, which) -> {
                 if (which == 0) {
@@ -254,15 +265,27 @@ public class DashboardActivity extends AppCompatActivity {
     }
 
     private void showRenameDialog(Member m) {
-        final EditText input = new EditText(this);
-        input.setText(m.getName());
-        input.setPadding(32, 32, 32, 32);
+        android.widget.FrameLayout container = new android.widget.FrameLayout(this);
+        android.widget.FrameLayout.LayoutParams params = new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
 
-        new AlertDialog.Builder(this)
+        com.google.android.material.textfield.TextInputLayout textInputLayout = new com.google.android.material.textfield.TextInputLayout(this);
+        textInputLayout.setHint("الاسم الجديد");
+        textInputLayout.setBoxBackgroundMode(com.google.android.material.textfield.TextInputLayout.BOX_BACKGROUND_OUTLINE);
+        textInputLayout.setLayoutParams(params);
+
+        com.google.android.material.textfield.TextInputEditText input = new com.google.android.material.textfield.TextInputEditText(textInputLayout.getContext());
+        input.setText(m.getName());
+        textInputLayout.addView(input);
+        
+        container.addView(textInputLayout);
+        container.setPadding(60, 40, 60, 20);
+
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
             .setTitle("تعديل الاسم")
-            .setView(input)
+            .setView(container)
             .setPositiveButton("حفظ", (dialog, which) -> {
-                String newName = input.getText().toString().trim();
+                String newName = input.getText() != null ? input.getText().toString().trim() : "";
                 if (!newName.isEmpty()) {
                     dbHelper.updateMemberName(m.getId(), newName);
                     loadData();
@@ -273,7 +296,7 @@ public class DashboardActivity extends AppCompatActivity {
     }
 
     private void showDeleteConfirmation(Member m) {
-        new AlertDialog.Builder(this)
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
             .setTitle("حذف العضو")
             .setMessage("هل أنت متأكد؟ سيتم حذف هذا العضو من القائمة نهائياً.")
             .setPositiveButton("حذف", (dialog, which) -> {
