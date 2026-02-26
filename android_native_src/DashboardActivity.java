@@ -29,7 +29,7 @@ public class DashboardActivity extends AppCompatActivity {
 
     private DatabaseHelper dbHelper;
     private TextView tvAssocName, tvCurrentDate, tvEndDate, tvMemberCount, tvCollected, tvRemaining, tvRecipientName;
-    private CheckBox cbPayoutDone;
+    private CheckBox cbPayoutDone, cbSelectAll;
     private RecyclerView rvMembers;
     private Button btnReset;
     private ImageButton btnChat;
@@ -62,6 +62,7 @@ public class DashboardActivity extends AppCompatActivity {
         tvRemaining = findViewById(R.id.tvDashRemaining);
         tvRecipientName = findViewById(R.id.tvRecipientName);
         cbPayoutDone = findViewById(R.id.cbPayoutDone);
+        cbSelectAll = findViewById(R.id.cbSelectAll);
         rvMembers = findViewById(R.id.rvDashMembers);
         btnReset = findViewById(R.id.btnReset);
         btnChat = findViewById(R.id.btnChat);
@@ -71,6 +72,25 @@ public class DashboardActivity extends AppCompatActivity {
 
         // Logic for "Done" button (Payout)
         cbPayoutDone.setOnClickListener(v -> handlePayoutClick());
+
+        // Logic for "Select All" button
+        cbSelectAll.setOnClickListener(v -> {
+            boolean isChecked = cbSelectAll.isChecked();
+            for (int i = 0; i < memberList.size(); i++) {
+                Member m = memberList.get(i);
+                if (m.isPaidForCurrentMonth() != isChecked) {
+                    m.setPaidForCurrentMonth(isChecked);
+                    dbHelper.setPaymentStatus(m.getId(), currentMonthIdx, isChecked);
+                    if (adapter != null) adapter.notifyItemChanged(i);
+                }
+            }
+            // Recalculate stats
+            paidCount = 0;
+            for (Member m : memberList) {
+                if (m.isPaidForCurrentMonth()) paidCount++;
+            }
+            updateSummary();
+        });
 
         btnReset.setOnClickListener(v -> {
             new AlertDialog.Builder(this)
@@ -126,11 +146,16 @@ public class DashboardActivity extends AppCompatActivity {
 
         // Check payment status for this month
         paidCount = 0;
+        boolean allPaid = true;
         for (Member m : memberList) {
             boolean isPaid = dbHelper.isMemberPaid(m.getId(), currentMonthIdx);
             m.setPaidForCurrentMonth(isPaid);
             if (isPaid) paidCount++;
+            else allPaid = false;
         }
+        
+        if (memberList.isEmpty()) allPaid = false;
+        cbSelectAll.setChecked(allPaid);
 
         updateSummary();
 
@@ -305,6 +330,17 @@ public class DashboardActivity extends AppCompatActivity {
                 dbHelper.setPaymentStatus(m.getId(), currentMonthIdx, isChecked);
                 m.setPaidForCurrentMonth(isChecked);
                 paidCount = isChecked ? paidCount + 1 : paidCount - 1;
+                
+                // Update Select All Checkbox state
+                boolean allPaid = true;
+                for (Member member : memberList) {
+                    if (!member.isPaidForCurrentMonth()) {
+                        allPaid = false;
+                        break;
+                    }
+                }
+                cbSelectAll.setChecked(allPaid);
+
                 updateSummary();
                 notifyItemChanged(position); 
             });
