@@ -10,7 +10,7 @@
         android:label="الجمعية"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        android:theme="@style/Theme.Material3.DayNight.NoActionBar">
         
         <!-- Setup is the launcher, it redirects to Dashboard if needed -->
         <activity
