@@ -28,17 +28,18 @@ import java.util.Locale;
 public class DashboardActivity extends AppCompatActivity {
 
     private DatabaseHelper dbHelper;
-    private TextView tvAssocName, tvCurrentDate, tvEndDate, tvMemberCount, tvCollected, tvRemaining, tvRecipientName;
+    private TextView tvAssocName, tvCurrentDate, tvEndDate, tvMemberCount, tvCollected, tvRemaining, tvRecipientName, tvCurrentMonthDisplay;
     private CheckBox cbPayoutDone, cbSelectAll;
     private RecyclerView rvMembers;
     private Button btnReset;
-    private ImageButton btnChat;
+    private ImageButton btnChat, btnPrevMonth, btnNextMonth;
     private FloatingActionButton fabAddMember;
     private DashboardAdapter adapter;
     private List<Member> memberList;
 
     // State
-    private int currentMonthIdx;
+    private int currentMonthIdx; // The actual active month in DB
+    private int viewingMonthIdx; // The month currently being viewed
     private double amountPerPerson;
     private String startDateStr;
     private int paidCount = 0;
@@ -61,11 +62,16 @@ public class DashboardActivity extends AppCompatActivity {
         tvCollected = findViewById(R.id.tvDashCollected);
         tvRemaining = findViewById(R.id.tvDashRemaining);
         tvRecipientName = findViewById(R.id.tvRecipientName);
+        tvCurrentMonthDisplay = findViewById(R.id.tvCurrentMonthDisplay);
+        
         cbPayoutDone = findViewById(R.id.cbPayoutDone);
         cbSelectAll = findViewById(R.id.cbSelectAll);
+        
         rvMembers = findViewById(R.id.rvDashMembers);
         btnReset = findViewById(R.id.btnReset);
         btnChat = findViewById(R.id.btnChat);
+        btnPrevMonth = findViewById(R.id.btnPrevMonth);
+        btnNextMonth = findViewById(R.id.btnNextMonth);
         fabAddMember = findViewById(R.id.fabAddMember);
 
         rvMembers.setLayoutManager(new LinearLayoutManager(this));
@@ -73,27 +79,57 @@ public class DashboardActivity extends AppCompatActivity {
         // Logic for "Done" button (Payout)
         cbPayoutDone.setOnClickListener(v -> handlePayoutClick());
 
+        // Month Navigation
+        btnPrevMonth.setOnClickListener(v -> {
+            if (viewingMonthIdx > 0) {
+                viewingMonthIdx--;
+                refreshDashboard();
+            }
+        });
+
+        btnNextMonth.setOnClickListener(v -> {
+            // Allow viewing up to total duration (members count)
+            // If members list is empty, we can't really navigate much, but let's assume at least 1
+            int maxMonths = memberList.isEmpty() ? 0 : memberList.size() - 1;
+            if (viewingMonthIdx < maxMonths) {
+                viewingMonthIdx++;
+                refreshDashboard();
+            } else {
+                Toast.makeText(this, "هذا هو الشهر الأخير في الدورة", Toast.LENGTH_SHORT).show();
+            }
+        });
+
         // Logic for "Select All" button
         cbSelectAll.setOnClickListener(v -> {
             boolean isChecked = cbSelectAll.isChecked();
-            for (int i = 0; i < memberList.size(); i++) {
-                Member m = memberList.get(i);
-                if (m.isPaidForCurrentMonth() != isChecked) {
-                    m.setPaidForCurrentMonth(isChecked);
-                    dbHelper.setPaymentStatus(m.getId(), currentMonthIdx, isChecked);
-                    if (adapter != null) adapter.notifyItemChanged(i);
-                }
-            }
-            // Recalculate stats
-            paidCount = 0;
-            for (Member m : memberList) {
-                if (m.isPaidForCurrentMonth()) paidCount++;
-            }
-            updateSummary();
+            cbSelectAll.setChecked(!isChecked); // Revert visual state pending confirmation
+
+            new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle(isChecked ? "تحديد الكل" : "إلغاء تحديد الكل")
+                .setMessage(isChecked ? "هل أنت متأكد من تسجيل دفع جميع الأعضاء لهذا الشهر؟" : "هل أنت متأكد من إلغاء دفع جميع الأعضاء لهذا الشهر؟")
+                .setPositiveButton("نعم", (dialog, which) -> {
+                    cbSelectAll.setChecked(isChecked); // Apply visual state
+                    for (int i = 0; i < memberList.size(); i++) {
+                        Member m = memberList.get(i);
+                        if (m.isPaidForCurrentMonth() != isChecked) {
+                            m.setPaidForCurrentMonth(isChecked);
+                            dbHelper.setPaymentStatus(m.getId(), viewingMonthIdx, isChecked);
+                            if (adapter != null) adapter.notifyItemChanged(i);
+                        }
+                    }
+                    // Recalculate stats
+                    paidCount = 0;
+                    for (Member m : memberList) {
+                        if (m.isPaidForCurrentMonth()) paidCount++;
+                    }
+                    updateSummary();
+                })
+                .setNegativeButton("إلغاء", null)
+                .show();
         });
 
         btnReset.setOnClickListener(v -> {
-            new AlertDialog.Builder(this)
+            new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
                 .setTitle("حذف الجمعية")
                 .setMessage("هل أنت متأكد؟ سيتم حذف جميع البيانات والبدء من جديد.")
                 .setPositiveButton("حذف", (d, w) -> {
@@ -119,12 +155,19 @@ public class DashboardActivity extends AppCompatActivity {
         String amountStr = dbHelper.getSetting(DatabaseHelper.KEY_AMOUNT);
         amountPerPerson = Double.parseDouble(amountStr);
         currentMonthIdx = dbHelper.getCurrentMonthIndex();
+        
+        // Default viewing month to current active month
+        viewingMonthIdx = currentMonthIdx;
 
         tvAssocName.setText(name);
 
         // Load Members
         memberList = dbHelper.getAllMembers();
         
+        refreshDashboard();
+    }
+
+    private void refreshDashboard() {
         // Update Stats Views
         String dateStart = calculateFormattedDate(startDateStr, 0);
         
@@ -136,19 +179,23 @@ public class DashboardActivity extends AppCompatActivity {
         tvEndDate.setText("النهاية: " + dateEnd);
         tvMemberCount.setText("عدد الأعضاء: " + memberList.size());
 
-        // Determine Recipient (Round Robin)
+        // Update Month Display
+        String currentMonthDate = calculateFormattedDate(startDateStr, viewingMonthIdx);
+        tvCurrentMonthDisplay.setText("الشهر " + (viewingMonthIdx + 1) + ": " + currentMonthDate);
+
+        // Determine Recipient (Round Robin based on VIEWING month)
         if (!memberList.isEmpty()) {
-            Member recipient = memberList.get(currentMonthIdx % memberList.size());
+            Member recipient = memberList.get(viewingMonthIdx % memberList.size());
             tvRecipientName.setText(recipient.getName());
         } else {
             tvRecipientName.setText("-");
         }
 
-        // Check payment status for this month
+        // Check payment status for VIEWING month
         paidCount = 0;
         boolean allPaid = true;
         for (Member m : memberList) {
-            boolean isPaid = dbHelper.isMemberPaid(m.getId(), currentMonthIdx);
+            boolean isPaid = dbHelper.isMemberPaid(m.getId(), viewingMonthIdx);
             m.setPaidForCurrentMonth(isPaid);
             if (isPaid) paidCount++;
             else allPaid = false;
@@ -166,6 +213,14 @@ public class DashboardActivity extends AppCompatActivity {
         } else {
             adapter.notifyDataSetChanged();
         }
+        
+        // Update navigation buttons state
+        btnPrevMonth.setEnabled(viewingMonthIdx > 0);
+        btnPrevMonth.setAlpha(viewingMonthIdx > 0 ? 1.0f : 0.5f);
+        
+        int maxMonths = memberList.isEmpty() ? 0 : memberList.size() - 1;
+        btnNextMonth.setEnabled(viewingMonthIdx < maxMonths);
+        btnNextMonth.setAlpha(viewingMonthIdx < maxMonths ? 1.0f : 0.5f);
     }
 
     private void updateSummary() {
@@ -178,13 +233,21 @@ public class DashboardActivity extends AppCompatActivity {
         tvRemaining.setText(nf.format(remaining));
 
         boolean isComplete = (remaining == 0) && !memberList.isEmpty();
-        cbPayoutDone.setEnabled(isComplete);
-        cbPayoutDone.setChecked(false); 
         
-        if (!isComplete) {
-            cbPayoutDone.setText("بانتظار التحصيل...");
+        // Only allow "Payout" (Closing the month) if we are viewing the CURRENT ACTIVE month
+        if (viewingMonthIdx == currentMonthIdx) {
+            cbPayoutDone.setVisibility(View.VISIBLE);
+            cbPayoutDone.setEnabled(isComplete);
+            cbPayoutDone.setChecked(false); 
+            
+            if (!isComplete) {
+                cbPayoutDone.setText("بانتظار التحصيل...");
+            } else {
+                cbPayoutDone.setText("تسليم الجمعية (إغلاق الشهر)");
+            }
         } else {
-            cbPayoutDone.setText("تسليم الجمعية (إغلاق الشهر)");
+            // If viewing history or future, hide the payout button to avoid confusion
+            cbPayoutDone.setVisibility(View.GONE);
         }
     }
 
@@ -329,16 +392,40 @@ public class DashboardActivity extends AppCompatActivity {
             String payoutDate = calculateFormattedDate(startDateStr, m.getOrder());
             holder.tvDate.setText("موعد القبض: " + payoutDate);
 
+            // Resolve Colors
+            int colorSurface = android.graphics.Color.WHITE;
+            int colorPaid = android.graphics.Color.parseColor("#E6FFFA"); // Fallback
+            int colorOutline = android.graphics.Color.LTGRAY;
+            int colorPrimary = android.graphics.Color.parseColor("#059669");
+
+            android.util.TypedValue typedValue = new android.util.TypedValue();
+            android.content.res.Resources.Theme theme = holder.itemView.getContext().getTheme();
+            
+            if (theme.resolveAttribute(com.google.android.material.R.attr.colorSurface, typedValue, true))
+                colorSurface = typedValue.data;
+            if (theme.resolveAttribute(com.google.android.material.R.attr.colorPrimaryContainer, typedValue, true))
+                colorPaid = typedValue.data;
+            if (theme.resolveAttribute(com.google.android.material.R.attr.colorOutlineVariant, typedValue, true))
+                colorOutline = typedValue.data;
+            if (theme.resolveAttribute(com.google.android.material.R.attr.colorPrimary, typedValue, true))
+                colorPrimary = typedValue.data;
+
+            com.google.android.material.card.MaterialCardView card = (com.google.android.material.card.MaterialCardView) holder.itemView;
+
             if (m.isPaidForCurrentMonth()) {
-                holder.itemView.setBackgroundResource(R.drawable.bg_card_paid);
+                card.setCardBackgroundColor(colorPaid);
+                card.setStrokeColor(colorPrimary);
+                card.setStrokeWidth(2);
                 holder.cbPaid.setChecked(true);
             } else {
-                holder.itemView.setBackgroundResource(R.drawable.bg_card);
+                card.setCardBackgroundColor(colorSurface);
+                card.setStrokeColor(colorOutline);
+                card.setStrokeWidth(1);
                 holder.cbPaid.setChecked(false);
             }
 
             // Recipient Highlight
-            if (m.getId() == memberList.get(currentMonthIdx % memberList.size()).getId()) {
+            if (m.getId() == memberList.get(viewingMonthIdx % memberList.size()).getId()) {
                 holder.tvRole.setVisibility(View.VISIBLE);
                 holder.ivRoleBookmark.setVisibility(View.VISIBLE);
                 holder.tvRole.setText("المستلم هذا الشهر");
@@ -350,22 +437,34 @@ public class DashboardActivity extends AppCompatActivity {
             // Click Handlers
             holder.cbPaid.setOnClickListener(v -> {
                 boolean isChecked = holder.cbPaid.isChecked();
-                dbHelper.setPaymentStatus(m.getId(), currentMonthIdx, isChecked);
-                m.setPaidForCurrentMonth(isChecked);
-                paidCount = isChecked ? paidCount + 1 : paidCount - 1;
-                
-                // Update Select All Checkbox state
-                boolean allPaid = true;
-                for (Member member : memberList) {
-                    if (!member.isPaidForCurrentMonth()) {
-                        allPaid = false;
-                        break;
-                    }
-                }
-                cbSelectAll.setChecked(allPaid);
+                holder.cbPaid.setChecked(!isChecked); // Revert visual state pending confirmation
 
-                updateSummary();
-                notifyItemChanged(position); 
+                String action = isChecked ? "تسجيل دفع" : "إلغاء دفع";
+                String message = "هل أنت متأكد من " + action + " العضو " + m.getName() + "؟";
+
+                new com.google.android.material.dialog.MaterialAlertDialogBuilder(holder.itemView.getContext())
+                    .setTitle("تأكيد العملية")
+                    .setMessage(message)
+                    .setPositiveButton("نعم", (dialog, which) -> {
+                        // Apply logic
+                        dbHelper.setPaymentStatus(m.getId(), viewingMonthIdx, isChecked);
+                        m.setPaidForCurrentMonth(isChecked);
+                        
+                        // Recalculate stats
+                        paidCount = 0;
+                        boolean allPaid = true;
+                        for (Member member : memberList) {
+                            if (member.isPaidForCurrentMonth()) paidCount++;
+                            else allPaid = false;
+                        }
+                        if (memberList.isEmpty()) allPaid = false;
+                        cbSelectAll.setChecked(allPaid);
+
+                        updateSummary();
+                        notifyItemChanged(position); 
+                    })
+                    .setNegativeButton("إلغاء", null)
+                    .show();
             });
 
             // Long Press for Edit/Delete
