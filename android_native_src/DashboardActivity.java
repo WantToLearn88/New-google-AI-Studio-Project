@@ -415,12 +415,12 @@ public class DashboardActivity extends AppCompatActivity {
             if (m.isPaidForCurrentMonth()) {
                 card.setCardBackgroundColor(colorPaid);
                 card.setStrokeColor(colorPrimary);
-                card.setStrokeWidth(2);
+                card.setStrokeWidth(2); // Keep stroke for paid items to highlight them
                 holder.cbPaid.setChecked(true);
             } else {
                 card.setCardBackgroundColor(colorSurface);
                 card.setStrokeColor(colorOutline);
-                card.setStrokeWidth(1);
+                card.setStrokeWidth(0); // Remove stroke for unpaid items
                 holder.cbPaid.setChecked(false);
             }
 
